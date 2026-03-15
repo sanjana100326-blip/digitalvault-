@@ -113,8 +113,15 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     if (shouldActivate && autoExecute !== false) {
-      trigger.isTriggered = true;
-      trigger.triggeredAt = now;
+      const claimedTrigger = await Trigger.findOneAndUpdate(
+        { _id: trigger._id, isTriggered: false },
+        { $set: { isTriggered: true, triggeredAt: now } },
+        { new: true }
+      );
+
+      if (!claimedTrigger) {
+        return res.status(409).json({ message: 'Trigger was already processed. Please refresh and try again.' });
+      }
 
       // Get all beneficiaries and send them emails
       const contacts = await TrustedContact.find({
@@ -129,8 +136,15 @@ router.post('/', authMiddleware, async (req, res) => {
         beneficiaryCount: contacts.length
       });
 
-      trigger.notificationSent = notificationResult.email?.success || false;
-      trigger.notificationSentAt = now;
+      await Trigger.updateOne(
+        { _id: trigger._id },
+        {
+          $set: {
+            notificationSent: notificationResult.email?.success || false,
+            notificationSentAt: now
+          }
+        }
+      );
 
       // Send access granted emails to each beneficiary
       let beneficiaryEmailCount = 0;
@@ -151,11 +165,11 @@ router.post('/', authMiddleware, async (req, res) => {
       await logActivity(req.userId, 'trigger_activated', `Trigger "${name}" auto-activated on creation. Sent access emails to ${beneficiaryEmailCount}/${contacts.length} beneficiaries`);
     }
 
-    await trigger.save();
+    const savedTrigger = await Trigger.findById(trigger._id);
 
     res.status(201).json({
       message: 'Trigger created' + (shouldActivate ? ' and activated' : ''),
-      trigger
+      trigger: savedTrigger
     });
   } catch (error) {
     console.error('Error creating trigger:', error);
@@ -260,8 +274,18 @@ router.post('/:id/activate', authMiddleware, async (req, res) => {
     }
 
     if (shouldActivate) {
-      trigger.isTriggered = true;
-      trigger.triggeredAt = now;
+      const claimedTrigger = await Trigger.findOneAndUpdate(
+        { _id: trigger._id, isTriggered: false },
+        { $set: { isTriggered: true, triggeredAt: now } },
+        { new: true }
+      );
+
+      if (!claimedTrigger) {
+        return res.json({
+          success: false,
+          message: 'Trigger was already processed. Refresh the page to see the latest status.'
+        });
+      }
 
       // Get user for notification
       const user = await User.findById(req.userId);
@@ -280,11 +304,18 @@ router.post('/:id/activate', authMiddleware, async (req, res) => {
         triggeredAt: now
       });
 
-      trigger.notificationSent = notificationResult.email?.success || false;
-      trigger.notificationSentAt = now;
-      trigger.webhookLastSentAt = notificationResult.webhook?.success ? now : trigger.webhookLastSentAt;
+      await Trigger.updateOne(
+        { _id: trigger._id },
+        {
+          $set: {
+            notificationSent: notificationResult.email?.success || false,
+            notificationSentAt: now,
+            ...(notificationResult.webhook?.success ? { webhookLastSentAt: now } : {})
+          }
+        }
+      );
 
-      await trigger.save();
+      const updatedTrigger = await Trigger.findById(trigger._id);
 
       // Send access granted emails to each beneficiary
       let beneficiaryEmailCount = 0;
@@ -319,7 +350,7 @@ router.post('/:id/activate', authMiddleware, async (req, res) => {
       res.json({
         success: true,
         message: `Trigger activated and notifications sent to ${beneficiaryEmailCount} beneficiaries`,
-        trigger,
+        trigger: updatedTrigger,
         notifications: notificationResult,
         beneficiaryNotifications: {
           sent: beneficiaryEmailCount,

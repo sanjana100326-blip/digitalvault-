@@ -87,9 +87,18 @@ const checkTriggerConditions = async (trigger, user) => {
 const activateTrigger = async (trigger, user) => {
   try {
     console.log(`[TRIGGER-SCHEDULER] Activating trigger: ${trigger.name}`);
-    
-    trigger.isTriggered = true;
-    trigger.triggeredAt = new Date();
+
+    const triggeredAt = new Date();
+    const claimedTrigger = await Trigger.findOneAndUpdate(
+      { _id: trigger._id, isTriggered: false },
+      { $set: { isTriggered: true, triggeredAt } },
+      { new: true }
+    );
+
+    if (!claimedTrigger) {
+      console.log(`[TRIGGER-SCHEDULER] Trigger already processed or no longer exists: ${trigger._id}`);
+      return { success: false, skipped: true, reason: 'already-processed' };
+    }
 
     // Get beneficiaries for notification
     const beneficiaries = await TrustedContact.find({
@@ -100,15 +109,20 @@ const activateTrigger = async (trigger, user) => {
     // Send notifications
     const notificationResult = await handleTriggerActivation(trigger, user, {
       beneficiaryCount: beneficiaries.length,
-      triggeredAt: trigger.triggeredAt,
+      triggeredAt,
       automatic: true
     });
 
-    trigger.notificationSent = notificationResult.email?.success || false;
-    trigger.notificationSentAt = trigger.triggeredAt;
-    trigger.webhookLastSentAt = notificationResult.webhook?.success ? trigger.triggeredAt : trigger.webhookLastSentAt;
-
-    await trigger.save();
+    await Trigger.updateOne(
+      { _id: trigger._id },
+      {
+        $set: {
+          notificationSent: notificationResult.email?.success || false,
+          notificationSentAt: triggeredAt,
+          ...(notificationResult.webhook?.success ? { webhookLastSentAt: triggeredAt } : {})
+        }
+      }
+    );
 
     // Send access granted emails to each beneficiary
     let beneficiaryEmailCount = 0;
