@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -16,6 +16,7 @@ import { BeneficiaryAccess } from './components/BeneficiaryAccess';
 import { BeneficiaryInvite } from './components/BeneficiaryInvite';
 import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
+import { authService } from './services';
 import './App.css';
 
 function App() {
@@ -25,6 +26,34 @@ function App() {
   const [activeSection, setActiveSection] = useState(
     localStorage.getItem('dashboardMode') === 'beneficiary' ? 'shared' : 'overview'
   );
+
+  useEffect(() => {
+    const bootstrapAuthState = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+        return;
+      }
+
+      try {
+        const response = await authService.getCurrentUser();
+        setCurrentUser(response.data);
+        setIsAuthenticated(true);
+      } catch (error) {
+        // Token might be stale (e.g., user deleted from DB) so clear local auth state.
+        localStorage.removeItem('token');
+        localStorage.removeItem('dashboardMode');
+        localStorage.removeItem('postLoginSection');
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        setIsBeneficiaryMode(false);
+        setActiveSection('overview');
+      }
+    };
+
+    bootstrapAuthState();
+  }, []);
 
   const handlePostAuthNavigation = (user) => {
     const nextSection = localStorage.getItem('postLoginSection');
