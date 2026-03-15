@@ -132,7 +132,8 @@ router.get('/shared/me', authMiddleware, async (req, res) => {
 
     const beneficiaryContacts = await TrustedContact.find({
       email: currentUser.email,
-      role: 'beneficiary'
+      role: 'beneficiary',
+      isVerified: true
     }).select('_id userId name canAccessAll').lean();
 
     if (beneficiaryContacts.length === 0) {
@@ -249,7 +250,8 @@ router.get('/shared/me/:id', authMiddleware, async (req, res) => {
     const beneficiaryContacts = await TrustedContact.find({
       userId: item.userId,
       email: currentUser.email,
-      role: 'beneficiary'
+      role: 'beneficiary',
+      isVerified: true
     }).select('_id canAccessAll name').lean();
 
     if (beneficiaryContacts.length === 0) {
