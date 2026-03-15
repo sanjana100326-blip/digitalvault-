@@ -1,0 +1,177 @@
+import cron from 'node-cron';
+import Trigger from '../models/Trigger.js';
+import User from '../models/User.js';
+import TrustedContact from '../models/TrustedContact.js';
+import { handleTriggerActivation } from './triggerNotifications.js';
+import { sendAccessGrantedEmail } from './email.js';
+import { logActivity } from './logger.js';
+
+let schedulerStarted = false;
+
+/**
+ * Check if trigger conditions are met
+ */
+const checkTriggerConditions = async (trigger, user) => {
+  const now = new Date();
+
+  if (trigger.triggerType === 'time-based') {
+    const triggerDate = new Date(trigger.triggerDate);
+    const [hours, minutes] = trigger.triggerTime.split(':');
+    triggerDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    return now >= triggerDate && !trigger.isTriggered;
+  }
+
+  if (trigger.triggerType === 'date-range') {
+    const start = new Date(trigger.startDate);
+    const end = new Date(trigger.endDate);
+    return now >= start && now <= end && !trigger.isTriggered;
+  }
+
+  if (trigger.triggerType === 'inactivity-based') {
+    const lastActivityDate = new Date(user.lastActivityAt);
+    const inactivityMs = trigger.inactivityDays * 24 * 60 * 60 * 1000;
+    return (now - lastActivityDate) >= inactivityMs && !trigger.isTriggered;
+  }
+
+  return false;
+};
+
+/**
+ * Activate a single trigger
+ */
+const activateTrigger = async (trigger, user) => {
+  try {
+    console.log(`[TRIGGER-SCHEDULER] Activating trigger: ${trigger.name}`);
+    
+    trigger.isTriggered = true;
+    trigger.triggeredAt = new Date();
+
+    // Get beneficiaries for notification
+    const beneficiaries = await TrustedContact.find({
+      userId: user._id,
+      role: 'beneficiary'
+    });
+
+    // Send notifications
+    const notificationResult = await handleTriggerActivation(trigger, user, {
+      beneficiaryCount: beneficiaries.length,
+      triggeredAt: trigger.triggeredAt,
+      automatic: true
+    });
+
+    trigger.notificationSent = notificationResult.email?.success || false;
+    trigger.notificationSentAt = trigger.triggeredAt;
+    trigger.webhookLastSentAt = notificationResult.webhook?.success ? trigger.triggeredAt : trigger.webhookLastSentAt;
+
+    await trigger.save();
+
+    // Send access granted emails to each beneficiary
+    let beneficiaryEmailCount = 0;
+    for (const beneficiary of beneficiaries) {
+      try {
+        const emailResult = await sendAccessGrantedEmail(
+          beneficiary,
+          user.firstName || user.username
+        );
+        if (emailResult.success) {
+          beneficiaryEmailCount++;
+          console.log(`[TRIGGER-SCHEDULER] ✅ Access email sent to beneficiary: ${beneficiary.email}`);
+        }
+      } catch (emailError) {
+        console.error(`[TRIGGER-SCHEDULER] Failed to email beneficiary ${beneficiary.email}:`, emailError);
+      }
+    }
+
+    // Log activity
+    await logActivity(user._id, 'trigger_activated_auto', 
+      `Trigger "${trigger.name}" automatically activated. Sent access emails to ${beneficiaryEmailCount}/${beneficiaries.length} beneficiaries`);
+
+    console.log(`[TRIGGER-SCHEDULER] ✅ Trigger activated: ${trigger.name}. Beneficiary emails sent: ${beneficiaryEmailCount}/${beneficiaries.length}`);
+    return { success: true, notificationResult, beneficiaryEmailCount };
+  } catch (error) {
+    console.error(`[TRIGGER-SCHEDULER] ❌ Error activating trigger ${trigger.name}:`, error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Run the periodic trigger check
+ */
+export const runTriggerCheck = async () => {
+  console.log(`[TRIGGER-SCHEDULER] Running automatic trigger check...`);
+  try {
+    // Get all active, non-triggered triggers
+    const triggers = await Trigger.find({
+      isActive: true,
+      isTriggered: false,
+      autoExecute: true
+    });
+
+    console.log(`[TRIGGER-SCHEDULER] Found ${triggers.length} active triggers to check`);
+
+    let activatedCount = 0;
+    const results = [];
+
+    for (const trigger of triggers) {
+      try {
+        // Get the user
+        const user = await User.findById(trigger.userId);
+        if (!user) {
+          console.log(`[TRIGGER-SCHEDULER] User not found for trigger ${trigger._id}`);
+          continue;
+        }
+
+        // Check if conditions are met
+        const shouldActivate = await checkTriggerConditions(trigger, user);
+
+        if (shouldActivate) {
+          const result = await activateTrigger(trigger, user);
+          results.push({
+            triggerId: trigger._id,
+            triggerName: trigger.name,
+            ...result
+          });
+          activatedCount++;
+        }
+      } catch (error) {
+        console.error(`[TRIGGER-SCHEDULER] Error checking trigger ${trigger._id}:`, error);
+        results.push({
+          triggerId: trigger._id,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+
+    console.log(`[TRIGGER-SCHEDULER] Check completed. Activated: ${activatedCount}/${triggers.length}`);
+    return { activatedCount, total: triggers.length, results };
+  } catch (error) {
+    console.error(`[TRIGGER-SCHEDULER] Error in trigger check:`, error);
+    throw error;
+  }
+};
+
+/**
+ * Start the trigger scheduler
+ * Runs every minute to check trigger conditions
+ */
+export const startTriggerScheduler = () => {
+  if (schedulerStarted) {
+    console.log('[TRIGGER-SCHEDULER] Already running');
+    return;
+  }
+
+  // Schedule: Run every minute
+  cron.schedule('* * * * *', async () => {
+    try {
+      await runTriggerCheck();
+    } catch (error) {
+      console.error('[TRIGGER-SCHEDULER] Scheduler error:', error);
+    }
+  });
+
+  schedulerStarted = true;
+  console.log('[TRIGGER-SCHEDULER] Started (checks every minute)');
+};
+
+export default { startTriggerScheduler, runTriggerCheck };
