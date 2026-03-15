@@ -21,39 +21,53 @@ import './App.css';
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
-  const [activeSection, setActiveSection] = useState('overview');
+  const [isBeneficiaryMode, setIsBeneficiaryMode] = useState(localStorage.getItem('dashboardMode') === 'beneficiary');
+  const [activeSection, setActiveSection] = useState(
+    localStorage.getItem('dashboardMode') === 'beneficiary' ? 'shared' : 'overview'
+  );
 
-  const handleLoginSuccess = (user) => {
+  const handlePostAuthNavigation = (user) => {
     const nextSection = localStorage.getItem('postLoginSection');
+    const beneficiaryMode = nextSection === 'shared';
+
     setCurrentUser(user);
     setIsAuthenticated(true);
-    if (nextSection) {
-      setActiveSection(nextSection);
-      localStorage.removeItem('postLoginSection');
+    setIsBeneficiaryMode(beneficiaryMode);
+    setActiveSection(beneficiaryMode ? 'shared' : nextSection || 'overview');
+
+    if (beneficiaryMode) {
+      localStorage.setItem('dashboardMode', 'beneficiary');
+    } else {
+      localStorage.removeItem('dashboardMode');
     }
+
+    localStorage.removeItem('postLoginSection');
+  };
+
+  const handleLoginSuccess = (user) => {
+    handlePostAuthNavigation(user);
   };
 
   const handleRegisterSuccess = (user) => {
-    const nextSection = localStorage.getItem('postLoginSection');
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-    if (nextSection) {
-      setActiveSection(nextSection);
-      localStorage.removeItem('postLoginSection');
-    }
+    handlePostAuthNavigation(user);
   };
 
   const handleInviteAccepted = (user) => {
     setCurrentUser(user);
     setIsAuthenticated(true);
+    setIsBeneficiaryMode(true);
     setActiveSection('shared');
+    localStorage.setItem('dashboardMode', 'beneficiary');
     localStorage.removeItem('postLoginSection');
   };
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('dashboardMode');
     setCurrentUser(null);
     setIsAuthenticated(false);
+    setIsBeneficiaryMode(false);
+    setActiveSection('overview');
   };
 
   return (
@@ -135,86 +149,90 @@ function App() {
                       overflowX: 'auto',
                       flexWrap: 'wrap'
                     }}>
-                      <a
-                        href="#overview"
-                        onClick={() => setActiveSection('overview')}
-                        style={{
-                          padding: '8px 15px',
-                          backgroundColor: activeSection === 'overview' ? '#1976d2' : 'transparent',
-                          color: activeSection === 'overview' ? 'white' : '#333',
-                          borderRadius: '4px',
-                          textDecoration: 'none',
-                          fontWeight: activeSection === 'overview' ? 'bold' : 'normal',
-                          transition: 'all 0.2s',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        📊 Overview
-                      </a>
-                      <a
-                        href="#vault"
-                        onClick={() => setActiveSection('vault')}
-                        style={{
-                          padding: '8px 15px',
-                          backgroundColor: activeSection === 'vault' ? '#1976d2' : 'transparent',
-                          color: activeSection === 'vault' ? 'white' : '#333',
-                          borderRadius: '4px',
-                          textDecoration: 'none',
-                          fontWeight: activeSection === 'vault' ? 'bold' : 'normal',
-                          transition: 'all 0.2s',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        🔒 Vault
-                      </a>
-                      <a
-                        href="#contacts"
-                        onClick={() => setActiveSection('contacts')}
-                        style={{
-                          padding: '8px 15px',
-                          backgroundColor: activeSection === 'contacts' ? '#1976d2' : 'transparent',
-                          color: activeSection === 'contacts' ? 'white' : '#333',
-                          borderRadius: '4px',
-                          textDecoration: 'none',
-                          fontWeight: activeSection === 'contacts' ? 'bold' : 'normal',
-                          transition: 'all 0.2s',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        👥 Contacts
-                      </a>
-                      <a
-                        href="#triggers"
-                        onClick={() => setActiveSection('triggers')}
-                        style={{
-                          padding: '8px 15px',
-                          backgroundColor: activeSection === 'triggers' ? '#1976d2' : 'transparent',
-                          color: activeSection === 'triggers' ? 'white' : '#333',
-                          borderRadius: '4px',
-                          textDecoration: 'none',
-                          fontWeight: activeSection === 'triggers' ? 'bold' : 'normal',
-                          transition: 'all 0.2s',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        ⏰ Triggers
-                      </a>
-                      <a
-                        href="#logs"
-                        onClick={() => setActiveSection('logs')}
-                        style={{
-                          padding: '8px 15px',
-                          backgroundColor: activeSection === 'logs' ? '#1976d2' : 'transparent',
-                          color: activeSection === 'logs' ? 'white' : '#333',
-                          borderRadius: '4px',
-                          textDecoration: 'none',
-                          fontWeight: activeSection === 'logs' ? 'bold' : 'normal',
-                          transition: 'all 0.2s',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        📋 Activity
-                      </a>
+                      {!isBeneficiaryMode && (
+                        <>
+                          <a
+                            href="#overview"
+                            onClick={() => setActiveSection('overview')}
+                            style={{
+                              padding: '8px 15px',
+                              backgroundColor: activeSection === 'overview' ? '#1976d2' : 'transparent',
+                              color: activeSection === 'overview' ? 'white' : '#333',
+                              borderRadius: '4px',
+                              textDecoration: 'none',
+                              fontWeight: activeSection === 'overview' ? 'bold' : 'normal',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            📊 Overview
+                          </a>
+                          <a
+                            href="#vault"
+                            onClick={() => setActiveSection('vault')}
+                            style={{
+                              padding: '8px 15px',
+                              backgroundColor: activeSection === 'vault' ? '#1976d2' : 'transparent',
+                              color: activeSection === 'vault' ? 'white' : '#333',
+                              borderRadius: '4px',
+                              textDecoration: 'none',
+                              fontWeight: activeSection === 'vault' ? 'bold' : 'normal',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            🔒 Vault
+                          </a>
+                          <a
+                            href="#contacts"
+                            onClick={() => setActiveSection('contacts')}
+                            style={{
+                              padding: '8px 15px',
+                              backgroundColor: activeSection === 'contacts' ? '#1976d2' : 'transparent',
+                              color: activeSection === 'contacts' ? 'white' : '#333',
+                              borderRadius: '4px',
+                              textDecoration: 'none',
+                              fontWeight: activeSection === 'contacts' ? 'bold' : 'normal',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            👥 Contacts
+                          </a>
+                          <a
+                            href="#triggers"
+                            onClick={() => setActiveSection('triggers')}
+                            style={{
+                              padding: '8px 15px',
+                              backgroundColor: activeSection === 'triggers' ? '#1976d2' : 'transparent',
+                              color: activeSection === 'triggers' ? 'white' : '#333',
+                              borderRadius: '4px',
+                              textDecoration: 'none',
+                              fontWeight: activeSection === 'triggers' ? 'bold' : 'normal',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            ⏰ Triggers
+                          </a>
+                          <a
+                            href="#logs"
+                            onClick={() => setActiveSection('logs')}
+                            style={{
+                              padding: '8px 15px',
+                              backgroundColor: activeSection === 'logs' ? '#1976d2' : 'transparent',
+                              color: activeSection === 'logs' ? 'white' : '#333',
+                              borderRadius: '4px',
+                              textDecoration: 'none',
+                              fontWeight: activeSection === 'logs' ? 'bold' : 'normal',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            📋 Activity
+                          </a>
+                        </>
+                      )}
                       <a
                         href="#shared"
                         onClick={() => setActiveSection('shared')}
@@ -247,45 +265,47 @@ function App() {
                       >
                         ❓ Help
                       </a>
-                      <a
-                        href="#settings"
-                        onClick={() => setActiveSection('settings')}
-                        style={{
-                          padding: '8px 15px',
-                          backgroundColor: activeSection === 'settings' ? '#1976d2' : 'transparent',
-                          color: activeSection === 'settings' ? 'white' : '#333',
-                          borderRadius: '4px',
-                          textDecoration: 'none',
-                          fontWeight: activeSection === 'settings' ? 'bold' : 'normal',
-                          transition: 'all 0.2s',
-                          whiteSpace: 'nowrap'
-                        }}
-                      >
-                        ⚙️ Settings
-                      </a>
+                      {!isBeneficiaryMode && (
+                        <a
+                          href="#settings"
+                          onClick={() => setActiveSection('settings')}
+                          style={{
+                            padding: '8px 15px',
+                            backgroundColor: activeSection === 'settings' ? '#1976d2' : 'transparent',
+                            color: activeSection === 'settings' ? 'white' : '#333',
+                            borderRadius: '4px',
+                            textDecoration: 'none',
+                            fontWeight: activeSection === 'settings' ? 'bold' : 'normal',
+                            transition: 'all 0.2s',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          ⚙️ Settings
+                        </a>
+                      )}
                     </nav>
                     <div className="dashboard-content" style={{ padding: '20px' }}>
-                      {activeSection === 'overview' && (
+                      {!isBeneficiaryMode && activeSection === 'overview' && (
                         <section id="overview">
                           <Dashboard />
                         </section>
                       )}
-                      {activeSection === 'vault' && (
+                      {!isBeneficiaryMode && activeSection === 'vault' && (
                         <section id="vault">
                           <VaultManager />
                         </section>
                       )}
-                      {activeSection === 'contacts' && (
+                      {!isBeneficiaryMode && activeSection === 'contacts' && (
                         <section id="contacts">
                           <TrustedContacts />
                         </section>
                       )}
-                      {activeSection === 'triggers' && (
+                      {!isBeneficiaryMode && activeSection === 'triggers' && (
                         <section id="triggers">
                           <TriggerManager />
                         </section>
                       )}
-                      {activeSection === 'logs' && (
+                      {!isBeneficiaryMode && activeSection === 'logs' && (
                         <section id="logs">
                           <AuditLogs />
                         </section>
@@ -300,7 +320,7 @@ function App() {
                           <HelpGuide />
                         </section>
                       )}
-                      {activeSection === 'settings' && (
+                      {!isBeneficiaryMode && activeSection === 'settings' && (
                         <section id="settings">
                           <div>
                             <h2 style={{ color: '#1976d2', marginBottom: '5px' }}>⚙️ Settings</h2>
