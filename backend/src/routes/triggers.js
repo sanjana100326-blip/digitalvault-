@@ -9,6 +9,8 @@ import { handleTriggerActivation } from '../utils/triggerNotifications.js';
 
 const router = express.Router();
 
+const isDateOnlyValue = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
 const resolveTimeBasedTriggerDate = (trigger) => {
   const sourceDate = trigger.triggerDate || trigger.triggerCondition?.date;
   if (!sourceDate) {
@@ -18,6 +20,10 @@ const resolveTimeBasedTriggerDate = (trigger) => {
   const triggerDate = new Date(sourceDate);
   if (Number.isNaN(triggerDate.getTime())) {
     return null;
+  }
+
+  if (!isDateOnlyValue(sourceDate)) {
+    return triggerDate;
   }
 
   const sourceTime = trigger.triggerTime || trigger.triggerCondition?.time || '00:00';
@@ -97,14 +103,11 @@ router.post('/', authMiddleware, async (req, res) => {
     let shouldActivate = false;
 
     if (triggerType === 'time-based') {
-      const triggerDateObj = new Date(triggerDate);
-      const [hours, minutes] = (triggerTime || '00:00').split(':');
-      triggerDateObj.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-      shouldActivate = now >= triggerDateObj;
+      const triggerDateObj = resolveTimeBasedTriggerDate({ triggerDate, triggerTime });
+      shouldActivate = Boolean(triggerDateObj) && now >= triggerDateObj;
     } else if (triggerType === 'date-range') {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      shouldActivate = now >= start && now <= end;
+      const range = resolveDateRange({ startDate, endDate });
+      shouldActivate = Boolean(range) && now >= range.start && now <= range.end;
     } else if (triggerType === 'inactivity-based') {
       const user = await User.findById(req.userId);
       const lastActivityDate = new Date(user.lastActivityAt);

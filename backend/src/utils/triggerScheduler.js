@@ -8,6 +8,8 @@ import { logActivity } from './logger.js';
 
 let schedulerStarted = false;
 
+const isDateOnlyValue = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
 const resolveTimeBasedTriggerDate = (trigger) => {
   const sourceDate = trigger.triggerDate || trigger.triggerCondition?.date;
   if (!sourceDate) {
@@ -17,6 +19,10 @@ const resolveTimeBasedTriggerDate = (trigger) => {
   const triggerDate = new Date(sourceDate);
   if (Number.isNaN(triggerDate.getTime())) {
     return null;
+  }
+
+  if (!isDateOnlyValue(sourceDate)) {
+    return triggerDate;
   }
 
   const sourceTime = trigger.triggerTime || trigger.triggerCondition?.time || '00:00';

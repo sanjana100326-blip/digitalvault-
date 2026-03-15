@@ -63,6 +63,19 @@ export const TriggerManager = () => {
             : []
         };
 
+        if (formData.triggerType === 'time-based' && formData.triggerDate) {
+          submitData.triggerDate = new Date(`${formData.triggerDate}T${formData.triggerTime || '00:00'}`).toISOString();
+        }
+
+        if (formData.triggerType === 'date-range') {
+          if (formData.startDate) {
+            submitData.startDate = new Date(`${formData.startDate}T00:00:00`).toISOString();
+          }
+          if (formData.endDate) {
+            submitData.endDate = new Date(`${formData.endDate}T23:59:59.999`).toISOString();
+          }
+        }
+
         await triggerService.createTrigger(submitData);
         setFormData({
           name: '',
