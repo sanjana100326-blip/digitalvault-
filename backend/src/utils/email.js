@@ -37,7 +37,22 @@ const sendWithResend = async (mailOptions) => {
 
 const sendEmail = async (mailOptions) => {
   if (resendConfigured) {
-    return sendWithResend(mailOptions);
+    try {
+      return await sendWithResend(mailOptions);
+    } catch (error) {
+      const resendTestingRestriction =
+        error?.message?.includes('You can only send testing emails to your own email address');
+
+      if (resendTestingRestriction && smtpConfigured && transporter) {
+        console.warn('[EMAIL] Resend sandbox restriction hit. Falling back to SMTP for this recipient.');
+        return transporter.sendMail({
+          ...mailOptions,
+          from: process.env.SMTP_EMAIL
+        });
+      }
+
+      throw error;
+    }
   }
 
   if (!smtpConfigured || !transporter) {
