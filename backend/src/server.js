@@ -20,13 +20,32 @@ const app = express();
 
 // Middleware
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
+  ? process.env.ALLOWED_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
   : ['http://localhost:3000', 'http://localhost:5173'];
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+
+  return allowedOrigins.some((allowedOrigin) => {
+    if (allowedOrigin === '*') return true;
+    if (allowedOrigin === origin) return true;
+
+    // Support simple wildcard patterns in ALLOWED_ORIGINS, e.g. https://digitalvault-*.vercel.app
+    if (allowedOrigin.includes('*')) {
+      const pattern = `^${escapeRegExp(allowedOrigin).replace(/\\\*/g, '.*')}$`;
+      return new RegExp(pattern).test(origin);
+    }
+
+    return false;
+  });
+};
 
 app.use(cors({
   origin: (origin, callback) => {
     // allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    if (isOriginAllowed(origin)) return callback(null, true);
     callback(new Error('Not allowed by CORS'));
   },
   credentials: true
