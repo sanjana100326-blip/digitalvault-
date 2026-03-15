@@ -8,6 +8,39 @@ import { logActivity } from './logger.js';
 
 let schedulerStarted = false;
 
+const resolveTimeBasedTriggerDate = (trigger) => {
+  const sourceDate = trigger.triggerDate || trigger.triggerCondition?.date;
+  if (!sourceDate) {
+    return null;
+  }
+
+  const triggerDate = new Date(sourceDate);
+  if (Number.isNaN(triggerDate.getTime())) {
+    return null;
+  }
+
+  const sourceTime = trigger.triggerTime || trigger.triggerCondition?.time || '00:00';
+  const [hours, minutes] = String(sourceTime).split(':');
+  triggerDate.setHours(parseInt(hours || '0', 10), parseInt(minutes || '0', 10), 0, 0);
+
+  return Number.isNaN(triggerDate.getTime()) ? null : triggerDate;
+};
+
+const resolveDateRange = (trigger) => {
+  const start = new Date(trigger.startDate || trigger.triggerCondition?.startDate);
+  const end = new Date(trigger.endDate || trigger.triggerCondition?.endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+  return { start, end };
+};
+
+const resolveInactivityDays = (trigger) => {
+  const value = trigger.inactivityDays ?? trigger.triggerCondition?.inactivityDays;
+  const days = Number(value);
+  return Number.isFinite(days) && days > 0 ? days : null;
+};
+
 /**
  * Check if trigger conditions are met
  */
@@ -15,21 +48,33 @@ const checkTriggerConditions = async (trigger, user) => {
   const now = new Date();
 
   if (trigger.triggerType === 'time-based') {
-    const triggerDate = new Date(trigger.triggerDate);
-    const [hours, minutes] = trigger.triggerTime.split(':');
-    triggerDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+    const triggerDate = resolveTimeBasedTriggerDate(trigger);
+    if (!triggerDate) {
+      console.warn(`[TRIGGER-SCHEDULER] Skipping invalid time-based trigger ${trigger._id} (${trigger.name})`);
+      return false;
+    }
     return now >= triggerDate && !trigger.isTriggered;
   }
 
   if (trigger.triggerType === 'date-range') {
-    const start = new Date(trigger.startDate);
-    const end = new Date(trigger.endDate);
+    const range = resolveDateRange(trigger);
+    if (!range) {
+      console.warn(`[TRIGGER-SCHEDULER] Skipping invalid date-range trigger ${trigger._id} (${trigger.name})`);
+      return false;
+    }
+    const { start, end } = range;
     return now >= start && now <= end && !trigger.isTriggered;
   }
 
   if (trigger.triggerType === 'inactivity-based') {
+    const inactivityDays = resolveInactivityDays(trigger);
+    if (!inactivityDays) {
+      console.warn(`[TRIGGER-SCHEDULER] Skipping invalid inactivity trigger ${trigger._id} (${trigger.name})`);
+      return false;
+    }
+
     const lastActivityDate = new Date(user.lastActivityAt);
-    const inactivityMs = trigger.inactivityDays * 24 * 60 * 60 * 1000;
+    const inactivityMs = inactivityDays * 24 * 60 * 60 * 1000;
     return (now - lastActivityDate) >= inactivityMs && !trigger.isTriggered;
   }
 
