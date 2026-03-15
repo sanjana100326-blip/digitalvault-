@@ -145,6 +145,31 @@ const activateTrigger = async (trigger, user) => {
 export const runTriggerCheck = async () => {
   console.log(`[TRIGGER-SCHEDULER] Running automatic trigger check...`);
   try {
+    const orphanTriggers = await Trigger.aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'owner'
+        }
+      },
+      {
+        $match: {
+          owner: { $size: 0 }
+        }
+      },
+      {
+        $project: { _id: 1 }
+      }
+    ]);
+
+    if (orphanTriggers.length > 0) {
+      const orphanIds = orphanTriggers.map((trigger) => trigger._id);
+      await Trigger.deleteMany({ _id: { $in: orphanIds } });
+      console.log(`[TRIGGER-SCHEDULER] Removed ${orphanIds.length} orphan trigger(s) for deleted users`);
+    }
+
     // Get all active, non-triggered triggers
     const triggers = await Trigger.find({
       isActive: true,
@@ -162,7 +187,8 @@ export const runTriggerCheck = async () => {
         // Get the user
         const user = await User.findById(trigger.userId);
         if (!user) {
-          console.log(`[TRIGGER-SCHEDULER] User not found for trigger ${trigger._id}`);
+          console.log(`[TRIGGER-SCHEDULER] User not found for trigger ${trigger._id}; removing orphan trigger`);
+          await Trigger.deleteOne({ _id: trigger._id });
           continue;
         }
 
