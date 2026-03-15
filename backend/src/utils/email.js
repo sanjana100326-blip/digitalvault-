@@ -6,9 +6,46 @@ dotenv.config();
 
 // Check if SMTP is configured
 const smtpConfigured = process.env.SMTP_EMAIL && process.env.SMTP_PASSWORD;
+const resendConfigured = Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL);
 const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 let transporter;
+
+const sendWithResend = async (mailOptions) => {
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM_EMAIL,
+      to: Array.isArray(mailOptions.to) ? mailOptions.to : [mailOptions.to],
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(`Resend API error: ${response.status} ${payload?.message || 'Unknown error'}`);
+  }
+
+  return { messageId: payload?.id || 'resend-message' };
+};
+
+const sendEmail = async (mailOptions) => {
+  if (resendConfigured) {
+    return sendWithResend(mailOptions);
+  }
+
+  if (!smtpConfigured || !transporter) {
+    throw new Error('No email provider configured. Set SMTP_* or RESEND_API_KEY + RESEND_FROM_EMAIL.');
+  }
+
+  return transporter.sendMail(mailOptions);
+};
 
 const escapeHtml = (value = '') => String(value)
   .replace(/&/g, '&amp;')
@@ -59,12 +96,19 @@ if (smtpConfigured) {
     auth: {
       user: process.env.SMTP_EMAIL,
       pass: process.env.SMTP_PASSWORD
-    }
+    },
+    connectionTimeout: 15000,
+    greetingTimeout: 10000,
+    socketTimeout: 20000
   });
   console.log('[EMAIL] SMTP configured with:', process.env.SMTP_SERVICE, process.env.SMTP_EMAIL);
 } else {
   console.warn('[EMAIL] ⚠️ SMTP NOT CONFIGURED! Email notifications will be logged but not sent.');
   console.warn('[EMAIL] Set SMTP_EMAIL, SMTP_PASSWORD, and SMTP_SERVICE in .env file');
+}
+
+if (resendConfigured) {
+  console.log('[EMAIL] Resend API configured with sender:', process.env.RESEND_FROM_EMAIL);
 }
 
 export const sendBeneficiaryEmail = async (beneficiaryEmail, beneficiaryName, ownerName) => {
@@ -76,10 +120,9 @@ export const sendBeneficiaryEmail = async (beneficiaryEmail, beneficiaryName, ow
     console.log(`[EMAIL] Attempting to send beneficiary email to ${email}`);
     console.log(`[EMAIL] SMTP Config - Configured: ${smtpConfigured}, Service: ${process.env.SMTP_SERVICE}, Email: ${process.env.SMTP_EMAIL}`);
     
-    if (!smtpConfigured) {
-      console.warn(`[EMAIL] ⚠️ SMTP not configured. Email NOT sent to ${email}`);
-      console.warn('[EMAIL] Configure SMTP in .env: SMTP_EMAIL, SMTP_PASSWORD, SMTP_SERVICE');
-      console.warn(`[EMAIL] Current values - SMTP_EMAIL: ${process.env.SMTP_EMAIL ? '✓ SET' : '✗ MISSING'}, SMTP_PASSWORD: ${process.env.SMTP_PASSWORD ? '✓ SET' : '✗ MISSING'}`);
+    if (!smtpConfigured && !resendConfigured) {
+      console.warn(`[EMAIL] ⚠️ No email provider configured. Email NOT sent to ${email}`);
+      console.warn('[EMAIL] Configure either SMTP_* or RESEND_API_KEY + RESEND_FROM_EMAIL');
       return { success: false, message: 'SMTP not configured' };
     }
 
@@ -89,7 +132,7 @@ export const sendBeneficiaryEmail = async (beneficiaryEmail, beneficiaryName, ow
     const loginLink = `${frontendUrl}/login?email=${encodedEmail}&next=shared`;
 
     const mailOptions = {
-      from: process.env.SMTP_EMAIL,
+      from: process.env.RESEND_FROM_EMAIL || process.env.SMTP_EMAIL,
       to: email,
       subject: `You've been added as a beneficiary - Digital Legacy Manager`,
       html: renderEmailShell({
@@ -127,7 +170,7 @@ export const sendBeneficiaryEmail = async (beneficiaryEmail, beneficiaryName, ow
       text: `You have been added as a beneficiary in Digital Legacy Manager.\n\nOwner: ${ownerName}\nBeneficiary email: ${email}\n\nWhat to do next:\n- Use the same email address that received this message.\n- ${inviteLink ? `Create your password here: ${inviteLink}` : 'Sign in with your existing account.'}\n- After sign-in, open Shared Access to view released items.\n\nLogin link: ${loginLink}\n\nPasswords are never sent by email.`
     };
 
-    const result = await transporter.sendMail(mailOptions);
+    const result = await sendEmail(mailOptions);
     console.log(`[EMAIL] ✅ Beneficiary email sent to ${email}. Message ID: ${result.messageId}`);
     return { success: true, message: 'Email sent successfully', messageId: result.messageId };
   } catch (error) {
@@ -150,9 +193,9 @@ export const sendAccessGrantedEmail = async (beneficiaryEmail, beneficiaryName, 
 
     console.log(`[EMAIL] Attempting to send access granted email to ${email}`);
     
-    if (!smtpConfigured) {
-      console.warn(`[EMAIL] ⚠️ SMTP not configured. Email NOT sent to ${email}`);
-      console.warn('[EMAIL] Configure SMTP in .env: SMTP_EMAIL, SMTP_PASSWORD, SMTP_SERVICE');
+    if (!smtpConfigured && !resendConfigured) {
+      console.warn(`[EMAIL] ⚠️ No email provider configured. Email NOT sent to ${email}`);
+      console.warn('[EMAIL] Configure either SMTP_* or RESEND_API_KEY + RESEND_FROM_EMAIL');
       return { success: false, message: 'SMTP not configured' };
     }
     
@@ -162,7 +205,7 @@ export const sendAccessGrantedEmail = async (beneficiaryEmail, beneficiaryName, 
     const loginLink = `${frontendUrl}/login?email=${encodedEmail}&next=shared`;
 
     const mailOptions = {
-      from: process.env.SMTP_EMAIL,
+      from: process.env.RESEND_FROM_EMAIL || process.env.SMTP_EMAIL,
       to: email,
       subject: `Vault Access Granted - Digital Legacy Manager`,
       html: renderEmailShell({
@@ -203,7 +246,7 @@ export const sendAccessGrantedEmail = async (beneficiaryEmail, beneficiaryName, 
       text: `Vault access is now available for you in Digital Legacy Manager.\n\nOwner: ${ownerName}\nRecipient: ${email}\n\nNext steps:\n- Sign in with the same email address that received this message.\n- Open Shared Access after login.\n${inviteLink ? `- Activate access first here: ${inviteLink}\n` : ''}\nLogin link: ${loginLink}\n\nPasswords are never sent by email.`
     };
 
-    const result = await transporter.sendMail(mailOptions);
+    const result = await sendEmail(mailOptions);
     console.log(`[EMAIL] ✅ Access granted email sent to ${email}. Message ID: ${result.messageId}`);
     return { success: true, message: 'Access notification sent successfully', messageId: result.messageId };
   } catch (error) {
@@ -220,13 +263,13 @@ export const sendAccessGrantedEmail = async (beneficiaryEmail, beneficiaryName, 
 
 export const sendPasswordResetEmail = async (email, name, resetLink) => {
   try {
-    if (!smtpConfigured) {
-      console.warn(`[EMAIL] SMTP not configured. Password reset email NOT sent to ${email}`);
+    if (!smtpConfigured && !resendConfigured) {
+      console.warn(`[EMAIL] No email provider configured. Password reset email NOT sent to ${email}`);
       return { success: false, message: 'SMTP not configured' };
     }
 
     const mailOptions = {
-      from: process.env.SMTP_EMAIL,
+      from: process.env.RESEND_FROM_EMAIL || process.env.SMTP_EMAIL,
       to: email,
       subject: 'Reset Your Password - Digital Legacy Manager',
       html: `
@@ -241,7 +284,7 @@ export const sendPasswordResetEmail = async (email, name, resetLink) => {
       `
     };
 
-    const result = await transporter.sendMail(mailOptions);
+    const result = await sendEmail(mailOptions);
     console.log(`[EMAIL] Password reset email sent to ${email}. Message ID: ${result.messageId}`);
     return { success: true, messageId: result.messageId };
   } catch (error) {
