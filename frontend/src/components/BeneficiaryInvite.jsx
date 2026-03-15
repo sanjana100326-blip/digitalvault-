@@ -36,12 +36,12 @@ export const BeneficiaryInvite = ({ onInviteAccepted }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!invite?.hasExistingAccount && password.length < 8) {
+    if (password.length < 8) {
       setError('Password must be at least 8 characters long');
       return;
     }
 
-    if (!invite?.hasExistingAccount && password !== confirmPassword) {
+    if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
@@ -56,18 +56,6 @@ export const BeneficiaryInvite = ({ onInviteAccepted }) => {
           lastName
         });
         const ownerDisplayName = invite?.ownerName || 'the account owner';
-
-        if (response.data.requiresLogin) {
-          setSuccessMessage(`Beneficiary access verified for ${ownerDisplayName}. Redirecting you to login...`);
-          localStorage.setItem(
-            'beneficiaryWelcomeMessage',
-            `Beneficiary access verified for ${ownerDisplayName}. Sign in to view any shared items after the trigger is activated.`
-          );
-          window.setTimeout(() => {
-            navigate('/login', { replace: true });
-          }, 1200);
-          return;
-        }
 
         setSuccessMessage(`Beneficiary access activated successfully. Redirecting you to shared access for ${ownerDisplayName}...`);
         localStorage.setItem(
@@ -117,7 +105,7 @@ export const BeneficiaryInvite = ({ onInviteAccepted }) => {
       </p>
       <p style={{ color: '#555', marginTop: 0 }}>
         {invite.hasExistingAccount
-          ? 'This email already has an account. Confirm the invite and sign in with your existing password. The invite link cannot reset your password.'
+          ? 'Set a new password to activate access with this email address.'
           : 'Create your password below to activate your beneficiary account.'}
       </p>
 
@@ -148,26 +136,22 @@ export const BeneficiaryInvite = ({ onInviteAccepted }) => {
           onChange={(e) => setLastName(e.target.value)}
           style={{ width: '100%', padding: '12px', marginBottom: '10px', border: '1px solid #cfd8dc', borderRadius: '8px', boxSizing: 'border-box' }}
         />
-        {!invite.hasExistingAccount && (
-          <>
-            <input
-              type="password"
-              placeholder="Create Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              style={{ width: '100%', padding: '12px', marginBottom: '10px', border: '1px solid #cfd8dc', borderRadius: '8px', boxSizing: 'border-box' }}
-            />
-            <input
-              type="password"
-              placeholder="Confirm Password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              style={{ width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #cfd8dc', borderRadius: '8px', boxSizing: 'border-box' }}
-            />
-          </>
-        )}
+        <input
+          type="password"
+          placeholder="Create Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          style={{ width: '100%', padding: '12px', marginBottom: '10px', border: '1px solid #cfd8dc', borderRadius: '8px', boxSizing: 'border-box' }}
+        />
+        <input
+          type="password"
+          placeholder="Confirm Password"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          required
+          style={{ width: '100%', padding: '12px', marginBottom: '16px', border: '1px solid #cfd8dc', borderRadius: '8px', boxSizing: 'border-box' }}
+        />
         <button
           type="submit"
           disabled={isSubmitting}
@@ -183,13 +167,11 @@ export const BeneficiaryInvite = ({ onInviteAccepted }) => {
             fontWeight: 600
           }}
         >
-          {isSubmitting ? 'Activating Access...' : successMessage ? 'Access Activated' : invite.hasExistingAccount ? 'Verify Invite and Continue to Login' : 'Activate Beneficiary Access'}
+          {isSubmitting ? 'Activating Access...' : successMessage ? 'Access Activated' : 'Activate Beneficiary Access'}
         </button>
         {isSubmitting && (
           <p style={{ margin: '12px 0 0', color: '#546e7a', fontSize: '14px' }}>
-            {invite.hasExistingAccount
-              ? 'Please wait. Your beneficiary invite is being verified.'
-              : 'Please wait. Your password is being saved and your beneficiary access is being activated.'}
+            Please wait. Your password is being saved and your beneficiary access is being activated.
           </p>
         )}
       </form>

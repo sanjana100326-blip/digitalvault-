@@ -227,6 +227,10 @@ router.post('/beneficiary-invite/:token/accept', async (req, res) => {
   try {
     const { password, username, firstName, lastName } = req.body;
 
+    if (!password || password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters long' });
+    }
+
     const result = await acceptBeneficiaryInvite(req.params.token, {
       password,
       username,
@@ -247,14 +251,6 @@ router.post('/beneficiary-invite/:token/accept', async (req, res) => {
       'beneficiary_invite_accepted',
       `${result.contact.email} completed beneficiary access setup`
     );
-
-    if (result.requiresLogin) {
-      return res.json({
-        message: 'Beneficiary access verified. Please sign in with your existing account to continue.',
-        requiresLogin: true,
-        email: result.user.email
-      });
-    }
 
     const token = jwt.sign(
       { userId: result.user._id },

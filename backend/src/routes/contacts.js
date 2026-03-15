@@ -20,18 +20,9 @@ router.post('/', authMiddleware, async (req, res) => {
   try {
     const { name, email, relationship, phone, role, canAccessAll, sendEmail } = req.body;
     const normalizedEmail = email?.trim().toLowerCase();
-    const currentUser = await User.findById(req.userId).select('email firstName lastName username');
 
     if (!normalizedEmail) {
       return res.status(400).json({ message: 'Email is required' });
-    }
-
-    if (!currentUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    if (currentUser.email?.toLowerCase() === normalizedEmail) {
-      return res.status(400).json({ message: 'You cannot add your own email as a trusted contact or beneficiary' });
     }
 
     const existingContact = await TrustedContact.findOne({
@@ -68,9 +59,10 @@ router.post('/', authMiddleware, async (req, res) => {
     // Send email notification if requested
     let emailResult = { success: false, message: 'Email not sent' };
     if (sendEmail && email && contact.role === 'beneficiary') {
-      const ownerName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`.trim() || currentUser.username || currentUser.email;
+      const user = await User.findById(req.userId);
+      const ownerName = `${user.firstName} ${user.lastName}`;
       console.log(`[CONTACT] Sending beneficiary email to ${email} for user ${req.userId}`);
-      emailResult = await sendBeneficiaryEmail(contact, contact.name, ownerName);
+      emailResult = await sendBeneficiaryEmail(contact, ownerName);
       console.log(`[CONTACT] Email result:`, emailResult);
     } else {
       console.log(`[CONTACT] Email not sent - sendEmail: ${sendEmail}, email: ${email}`);

@@ -80,10 +80,6 @@ export const acceptBeneficiaryInvite = async (token, { password, username, first
   let user = await User.findOne({ email: contact.email });
 
   if (!user) {
-    if (!password || password.length < 8) {
-      throw new Error('Password must be at least 8 characters long');
-    }
-
     const uniqueUsername = await generateUniqueUsername(contact.email, username);
     user = new User({
       username: uniqueUsername,
@@ -99,6 +95,7 @@ export const acceptBeneficiaryInvite = async (token, { password, username, first
     if (lastName && !user.lastName) {
       user.lastName = lastName;
     }
+    user.password = password;
   }
 
   await user.save();
@@ -112,8 +109,7 @@ export const acceptBeneficiaryInvite = async (token, { password, username, first
     user,
     contact,
     ownerName: invite.ownerName,
-    hasExistingAccount: invite.hasExistingAccount,
-    requiresLogin: invite.hasExistingAccount
+    hasExistingAccount: invite.hasExistingAccount
   };
 };
 
