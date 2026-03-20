@@ -6,7 +6,8 @@ export const TwoFactorAuth = () => {
   const [showSetup, setShowSetup] = useState(false);
   const [setupData, setSetupData] = useState(null);
   const [verificationToken, setVerificationToken] = useState('');
-  const [password, setPassword] = useState('');
+  const [disablePassword, setDisablePassword] = useState('');
+  const [regenPassword, setRegenPassword] = useState('');
   const [backupCodes, setBackupCodes] = useState(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -22,7 +23,7 @@ export const TwoFactorAuth = () => {
       setTwoFAStatus(response.data);
       setIsLoading(false);
     } catch (err) {
-      setError('Failed to fetch 2FA status');
+      setError(err?.response?.data?.message || 'Failed to fetch 2FA status');
       setIsLoading(false);
     }
   };
@@ -35,7 +36,7 @@ export const TwoFactorAuth = () => {
       setSetupData(response.data);
       setShowSetup(true);
     } catch (err) {
-      setError('Failed to setup 2FA');
+      setError(err?.response?.data?.message || 'Failed to setup 2FA');
     }
   };
 
@@ -53,39 +54,39 @@ export const TwoFactorAuth = () => {
       setVerificationToken('');
       await fetchTwoFAStatus();
     } catch (err) {
-      setError('Invalid token. Please try again.');
+      setError(err?.response?.data?.message || 'Invalid token. Please try again.');
     }
   };
 
   const handleDisable = async () => {
     try {
-      if (!password) {
+      if (!disablePassword) {
         setError('Please enter your password');
         return;
       }
 
-      await authService.disableTwoFA(password);
+      await authService.disableTwoFA(disablePassword);
       setMessage('2FA disabled successfully');
-      setPassword('');
+      setDisablePassword('');
       await fetchTwoFAStatus();
     } catch (err) {
-      setError('Invalid password or failed to disable 2FA');
+      setError(err?.response?.data?.message || 'Invalid password or failed to disable 2FA');
     }
   };
 
   const handleRegenerateCodes = async () => {
     try {
-      if (!password) {
+      if (!regenPassword) {
         setError('Please enter your password');
         return;
       }
 
-      const response = await authService.regenerateBackupCodes(password);
+      const response = await authService.regenerateBackupCodes(regenPassword);
       setBackupCodes(response.data.backupCodes);
       setMessage('Backup codes regenerated successfully');
-      setPassword('');
+      setRegenPassword('');
     } catch (err) {
-      setError('Invalid password or failed to regenerate codes');
+      setError(err?.response?.data?.message || 'Invalid password or failed to regenerate codes');
     }
   };
 
@@ -130,8 +131,8 @@ export const TwoFactorAuth = () => {
             <input
               type="password"
               placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={regenPassword}
+              onChange={(e) => setRegenPassword(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',
@@ -161,8 +162,8 @@ export const TwoFactorAuth = () => {
             <input
               type="password"
               placeholder="Enter your password to disable"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={disablePassword}
+              onChange={(e) => setDisablePassword(e.target.value)}
               style={{
                 width: '100%',
                 padding: '10px',

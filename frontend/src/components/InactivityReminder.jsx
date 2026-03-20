@@ -22,7 +22,7 @@ export const InactivityReminder = () => {
       setReminderDays(response.data.inactivityReminderDays);
       setIsLoading(false);
     } catch (err) {
-      setError('Failed to fetch inactivity reminder settings');
+      setError(err?.response?.data?.message || 'Failed to fetch inactivity reminder settings');
       setIsLoading(false);
     }
   };
@@ -42,7 +42,7 @@ export const InactivityReminder = () => {
       await fetchSettings();
       setIsSaving(false);
     } catch (err) {
-      setError('Failed to update settings. Please try again.');
+      setError(err?.response?.data?.message || 'Failed to update settings. Please try again.');
       setIsSaving(false);
     }
   };

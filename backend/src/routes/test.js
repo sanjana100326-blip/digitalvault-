@@ -106,6 +106,7 @@ router.post('/test-beneficiary-email', authMiddleware, async (req, res) => {
 
     const result = await sendAccessGrantedEmail(
       { email: beneficiaryEmail, name: beneficiaryName || 'Test Beneficiary' },
+      beneficiaryName || 'Test Beneficiary',
       'Test Owner'
     );
 

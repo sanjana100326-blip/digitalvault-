@@ -14,28 +14,58 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password, firstName, lastName } = req.body;
-    
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    if (existingUser) {
-      return res.status(400).json({ message: 'User already exists' });
+
+    const normalizedUsername = username?.trim();
+    const normalizedEmail = email?.trim().toLowerCase();
+
+    if (!normalizedUsername || !normalizedEmail || !password) {
+      return res.status(400).json({
+        message: 'Username, email, and password are required',
+        code: 'MISSING_REQUIRED_FIELDS'
+      });
     }
-    
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        message: 'Password must be at least 8 characters long',
+        code: 'WEAK_PASSWORD'
+      });
+    }
+
+    const emailConflict = await User.findOne({ email: normalizedEmail }).select('_id');
+    if (emailConflict) {
+      return res.status(409).json({
+        message: 'Email already registered. Please login or use forgot password.',
+        code: 'EMAIL_ALREADY_EXISTS',
+        field: 'email'
+      });
+    }
+
+    const usernameConflict = await User.findOne({ username: normalizedUsername }).select('_id');
+    if (usernameConflict) {
+      return res.status(409).json({
+        message: 'Username is already taken. Please choose another username.',
+        code: 'USERNAME_ALREADY_EXISTS',
+        field: 'username'
+      });
+    }
+
     const user = new User({
-      username,
-      email,
+      username: normalizedUsername,
+      email: normalizedEmail,
       password,
       firstName,
       lastName
     });
-    
+
     await user.save();
-    
+
     const token = jwt.sign(
       { userId: user._id },
       process.env.JWT_SECRET || 'your_jwt_secret_key_here',
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
-    
+
     res.status(201).json({
       message: 'User registered successfully',
       token,
@@ -46,6 +76,16 @@ router.post('/register', async (req, res) => {
       }
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      const duplicateField = Object.keys(error.keyPattern || {})[0] || 'field';
+      const duplicateValue = error.keyValue?.[duplicateField];
+      return res.status(409).json({
+        message: `${duplicateField} already exists${duplicateValue ? `: ${duplicateValue}` : ''}`,
+        code: 'DUPLICATE_KEY',
+        field: duplicateField
+      });
+    }
+
     res.status(500).json({ message: error.message });
   }
 });

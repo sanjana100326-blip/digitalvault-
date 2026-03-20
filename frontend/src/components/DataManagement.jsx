@@ -3,11 +3,120 @@ import { dataService } from '../services';
 
 export const DataManagement = () => {
   const [activeTab, setActiveTab] = useState('export');
+  const [exportFormat, setExportFormat] = useState('json');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [restoreFile, setRestoreFile] = useState(null);
   const [overwriteMode, setOverwriteMode] = useState(false);
+
+  const resolveErrorMessage = (err, fallback) => (
+    err?.response?.data?.message || err?.message || fallback
+  );
+
+  const getExportTitle = (type) => (
+    type === 'all' ? 'Digital Legacy Export' :
+    type === 'vault' ? 'Vault Items Export' :
+    'Activity Log Export'
+  );
+
+  const getExportFilename = (type, format) => {
+    const date = new Date().toISOString().split('T')[0];
+    const base = type === 'all'
+      ? 'digital-legacy-export'
+      : type === 'vault'
+        ? 'vault-items-export'
+        : 'activity-log-export';
+
+    if (format === 'pdf') return `${base}-${date}.pdf`;
+    if (format === 'doc') return `${base}-${date}.doc`;
+    return `${base}-${date}.json`;
+  };
+
+  const triggerDownload = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const element = document.createElement('a');
+    element.href = url;
+    element.download = filename;
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportAsJson = (data, filename) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+    triggerDownload(blob, filename);
+  };
+
+  const exportAsDoc = (title, data, filename) => {
+    const prettyJson = JSON.stringify(data, null, 2)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const html = `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${title}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; padding: 24px;">
+          <h1>${title}</h1>
+          <p>Generated: ${new Date().toLocaleString()}</p>
+          <pre style="white-space: pre-wrap; word-wrap: break-word; border: 1px solid #ddd; padding: 12px;">${prettyJson}</pre>
+        </body>
+      </html>
+    `;
+    const blob = new Blob([html], { type: 'application/msword;charset=utf-8' });
+    triggerDownload(blob, filename);
+  };
+
+  const exportAsPdf = async (title, data, filename) => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 40;
+    const maxWidth = 515;
+    const lineHeight = 14;
+    let y = margin;
+
+    doc.setFontSize(16);
+    doc.text(title, margin, y);
+    y += 22;
+
+    doc.setFontSize(10);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, margin, y);
+    y += 20;
+
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(JSON.stringify(data, null, 2), maxWidth);
+    lines.forEach((line) => {
+      if (y > 780) {
+        doc.addPage();
+        y = margin;
+      }
+      doc.text(line, margin, y);
+      y += lineHeight;
+    });
+
+    doc.save(filename);
+  };
+
+  const downloadExport = async (type, data) => {
+    const title = getExportTitle(type);
+    const filename = getExportFilename(type, exportFormat);
+
+    if (exportFormat === 'pdf') {
+      await exportAsPdf(title, data, filename);
+      return;
+    }
+
+    if (exportFormat === 'doc') {
+      exportAsDoc(title, data, filename);
+      return;
+    }
+
+    exportAsJson(data, filename);
+  };
 
   const handleExport = async (type) => {
     try {
@@ -20,25 +129,12 @@ export const DataManagement = () => {
       else if (type === 'vault') response = await dataService.exportVaultItems();
       else if (type === 'activity') response = await dataService.exportActivityLog();
 
-      // Convert to JSON and download
-      const dataStr = JSON.stringify(response.data, null, 2);
-      const element = document.createElement('a');
-      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(dataStr));
-      
-      const filename = type === 'all' ? 'digital-legacy-export.json' :
-                      type === 'vault' ? 'vault-items-export.json' :
-                      'activity-log-export.json';
-      
-      element.setAttribute('download', filename);
-      element.style.display = 'none';
-      document.body.appendChild(element);
-      element.click();
-      document.body.removeChild(element);
+      await downloadExport(type, response.data);
 
-      setMessage(`✓ ${type.charAt(0).toUpperCase() + type.slice(1)} data exported successfully!`);
-      setIsLoading(false);
+      setMessage(`✓ ${type.charAt(0).toUpperCase() + type.slice(1)} exported successfully as ${exportFormat.toUpperCase()}!`);
     } catch (err) {
-      setError('Failed to export data');
+      setError(resolveErrorMessage(err, 'Failed to export data'));
+    } finally {
       setIsLoading(false);
     }
   };
@@ -50,21 +146,13 @@ export const DataManagement = () => {
       setMessage('');
 
       const response = await dataService.createBackup();
-      
-      // Download backup
-      const dataStr = JSON.stringify(response.data, null, 2);
-      const element = document.createElement('a');
-      element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(dataStr));
-      element.setAttribute('download', `backup-${new Date().toISOString().split('T')[0]}.json`);
-      element.style.display = 'none';
-      document.body.appendChild(element);
-      element.click();
-      document.body.removeChild(element);
+
+      exportAsJson(response.data, `backup-${new Date().toISOString().split('T')[0]}.json`);
 
       setMessage('✓ Backup created and downloaded successfully!');
-      setIsLoading(false);
     } catch (err) {
-      setError('Failed to create backup');
+      setError(resolveErrorMessage(err, 'Failed to create backup'));
+    } finally {
       setIsLoading(false);
     }
   };
@@ -106,9 +194,9 @@ export const DataManagement = () => {
       setMessage('✓ Backup restored successfully!');
       setRestoreFile(null);
       setOverwriteMode(false);
-      setIsLoading(false);
     } catch (err) {
-      setError('Failed to restore backup: ' + err.message);
+      setError(`Failed to restore backup: ${resolveErrorMessage(err, 'Unknown error')}`);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -174,7 +262,28 @@ export const DataManagement = () => {
       {activeTab === 'export' && (
         <div>
           <h3>Export Your Data</h3>
-          <p>Download your data in JSON format for backup or migration.</p>
+          <p>Download your data in JSON, PDF, or Word format for backup, sharing, or review.</p>
+
+          <div style={{ marginBottom: '20px', maxWidth: '280px' }}>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>
+              Export format
+            </label>
+            <select
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                backgroundColor: '#fff'
+              }}
+            >
+              <option value="json">JSON</option>
+              <option value="pdf">PDF</option>
+              <option value="doc">Word (.doc)</option>
+            </select>
+          </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
             <div style={{
